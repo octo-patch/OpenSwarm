@@ -44,9 +44,28 @@ class TestMiniMaxDetection:
     def test_case_insensitive(self):
         assert config.is_minimax_model("MINIMAX/MINIMAX-M3") is True
 
-    def test_other_providers_not_detected(self):
-        assert config.is_minimax_model("anthropic/claude-sonnet-4-6") is False
-        assert config.is_minimax_model("litellm/gemini/gemini-3-flash") is False
+    @pytest.mark.parametrize("model", [
+        "anthropic/claude-sonnet-4-6",
+        "litellm/gemini/gemini-3-flash",
+        "openrouter/minimax/minimax-m3.1-flash:free",
+        "openai/custom-minimax-model",
+        "custom/minimax-proxy",
+    ])
+    def test_other_providers_not_detected(self, model):
+        assert config.is_minimax_model(model) is False
+
+    @pytest.mark.parametrize("model", [
+        "openrouter/minimax/minimax-m3.1-flash:free",
+        "openai/custom-minimax-model",
+        "anthropic/claude-sonnet-4-6",
+    ])
+    def test_other_routes_do_not_receive_minimax_credentials(self, model):
+        sdk = mock.Mock()
+        with mock.patch.dict(sys.modules, {"agency_swarm": sdk}), mock.patch.dict(
+            os.environ, {"MINIMAX_API_KEY": "unit-test-placeholder"}
+        ):
+            config._resolve(model)
+        sdk.LitellmModel.assert_called_once_with(model=model)
 
 
 class TestMiniMaxRegion:
@@ -89,17 +108,21 @@ class TestMiniMaxBaseUrl:
 class TestMiniMaxKwargs:
     def test_api_base_always_present(self):
         kwargs = config._minimax_kwargs("minimax/MiniMax-M3")
-        assert kwargs["api_base"] == "https://api.minimax.io/v1"
+        assert kwargs["base_url"] == "https://api.minimax.io/v1"
         assert "api_key" not in kwargs
 
     def test_api_key_included_when_set(self):
         with mock.patch.dict(os.environ, {"MINIMAX_API_KEY": "unit-test-placeholder"}):
             kwargs = config._minimax_kwargs("anthropic/MiniMax-M3")
-        assert kwargs["api_base"] == "https://api.minimax.io/anthropic"
+        assert kwargs["base_url"] == "https://api.minimax.io/anthropic"
         assert kwargs["api_key"] == "unit-test-placeholder"
 
 
 class TestResolveAndDefaultModel:
+    def test_minimax_addon_key_does_not_replace_existing_default(self):
+        with mock.patch.dict(os.environ, {"MINIMAX_API_KEY": "unit-test-placeholder"}):
+            assert config.get_default_model() == "gpt-5.4"
+
     def test_minimax_openai_route_resolves(self):
         result = config._resolve("minimax/MiniMax-M3")
         try:
@@ -145,10 +168,10 @@ class TestEnvExample:
     @pytest.mark.parametrize(
         "model",
         [
+            "minimax/MiniMax-M3.1-Flash",
             "minimax/MiniMax-M3",
-            "minimax/MiniMax-M2.7",
+            "anthropic/MiniMax-M3.1-Flash",
             "anthropic/MiniMax-M3",
-            "anthropic/MiniMax-M2.7",
         ],
     )
     def test_models_documented_for_both_routes(self, model):

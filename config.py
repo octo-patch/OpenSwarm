@@ -40,7 +40,11 @@ def is_minimax_model(model: str) -> bool:
     Covers the OpenAI-compatible form ('minimax/MiniMax-M3') and the
     Anthropic-compatible form ('anthropic/MiniMax-M3'), regardless of case.
     """
-    return "minimax" in model.lower()
+    bare = model.removeprefix("litellm/").lower()
+    provider, _, model_id = bare.partition("/")
+    return provider == "minimax" or (
+        provider == "anthropic" and model_id.startswith("minimax-")
+    )
 
 
 def minimax_region() -> str:
@@ -64,7 +68,7 @@ def minimax_base_url(model: str) -> str:
 
 def _minimax_kwargs(model: str) -> dict:
     """Build LitellmModel keyword arguments for a MiniMax model."""
-    kwargs = {"api_base": minimax_base_url(model)}
+    kwargs = {"base_url": minimax_base_url(model)}
     api_key = os.getenv("MINIMAX_API_KEY")
     if api_key:
         kwargs["api_key"] = api_key
